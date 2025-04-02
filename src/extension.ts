@@ -54,8 +54,27 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView('myextensionView', {
     treeDataProvider
   });
-
   context.subscriptions.push(treeView);
+
+  vscode.commands.registerCommand('myextension.editItem', async (item: EditableTreeItem) => {
+    const newName = await vscode.window.showInputBox({
+        prompt: 'Enter new item name',
+        value: item.label.replace('Editable: ', '') // 去掉前缀
+    });
+
+    if (newName) {
+      console.log(`New name: ${newName}`);
+      item.label = `Editable: ${newName}`;
+      const newItems = treeDataProvider.items.map(i =>
+            i.id === item.id ? new EditableTreeItem(newName, i.id) : i
+        );
+
+        // ❷ 替换 `items` 数组
+        treeDataProvider.setItems(newItems);
+      // treeDataProvider.refresh(); // 刷新 TreeView
+    }
+  });
+
 }
 
 // This method is called when your extension is deactivated
@@ -66,27 +85,51 @@ class MyTreeViewProvider implements vscode.TreeDataProvider<MyTreeItem> {
   readonly onDidChangeTreeData: vscode.Event<MyTreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
   private inputValue: string = "";
+  public items: vscode.TreeItem[] = [
+    new MyTreeItem("输入内容: " + this.inputValue, vscode.TreeItemCollapsibleState.None),
+    new MyButtonItem("提交", () => {
+      vscode.window.showInputBox({ placeHolder: "输入内容..." }).then(value => {
+        if (value !== undefined) {
+          this.inputValue = value;
+          this._onDidChangeTreeData.fire();
+        }
+      });
+    }),
+    new EditableTreeItem("fire", "f")
+  ];
 
   getTreeItem(element: MyTreeItem): vscode.TreeItem {
     return element;
   }
 
-  getChildren(element?: MyTreeItem): MyTreeItem[] {
-    if (!element) {
-      return [
-        new MyTreeItem("输入内容: " + this.inputValue, vscode.TreeItemCollapsibleState.None),
-        new MyButtonItem("提交", () => {
-          vscode.window.showInputBox({ placeHolder: "输入内容..." }).then(value => {
-            if (value !== undefined) {
-              this.inputValue = value;
-              this._onDidChangeTreeData.fire();
-            }
-          });
-        })
-      ];
-    }
-    return [];
+  getChildren(): Thenable<vscode.TreeItem[]> {
+    return Promise.resolve(this.items);
   }
+
+  setItems(newItems: vscode.TreeItem[]) {
+    this.items = newItems;
+    this.refresh();
+  }
+
+  refresh(): void {
+    this._onDidChangeTreeData.fire();
+  }
+}
+
+class EditableTreeItem extends vscode.TreeItem {
+    constructor(
+        public label: string,
+        public id: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.iconPath = new vscode.ThemeIcon('edit');
+        this.label = "Editable: " + label; // 显示为可编辑
+        this.command = {
+            command: 'myextension.editItem',
+            title: 'Edit Item',
+            arguments: [this]
+        };
+    }
 }
 
 class MyTreeItem extends vscode.TreeItem {
@@ -100,11 +143,11 @@ class MyButtonItem extends vscode.TreeItem {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.command = {
       title: label,
-      command: 'myextension.buttonClick',
+      command: 'myextension.runShell',
       tooltip: '点击按钮',
       arguments: [callback]
     };
-    vscode.commands.registerCommand('myextension.buttonClick', (cb) => cb());
+    // vscode.commands.registerCommand('myextension.buttonClick', (cb) => cb());
   }
 }
 
